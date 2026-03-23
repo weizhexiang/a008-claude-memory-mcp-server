@@ -13,6 +13,7 @@ import * as os from "os";
 import { EmbeddingService } from "./embedding.js";
 import { MemoryDatabase } from "./database.js";
 import { registerTools } from "./tools.js";
+import { registerResources } from "./resources.js";
 import type { MemoryCategory } from "./types.js";
 
 // Configuration
@@ -51,6 +52,9 @@ const server = new McpServer({
 
 // Register tools
 registerTools(server, embeddingService, database);
+
+// Register resources (auto-loaded at session start)
+registerResources(server, database);
 
 // ============================================================================
 // Start server

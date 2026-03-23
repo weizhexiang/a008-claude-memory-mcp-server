@@ -10,6 +10,7 @@ import { randomUUID } from "crypto";
 import type { Memory, MemoryInput, MemoryUpdate, SearchOptions, ListOptions, MemoryStats, MemoryCategory, MemorySource } from "./types.js";
 
 const DB_FILE = "memories.json";
+const PENDING_FILE = "pending-memories.json";
 
 export class MemoryDatabase {
   private dbPath: string;
@@ -40,7 +41,75 @@ export class MemoryDatabase {
       }
     }
 
+    // Process pending memories from hooks
+    await this.processPendingMemories();
+
     this.initialized = true;
+  }
+
+  /**
+   * Process pending memories saved by hooks
+   */
+  private async processPendingMemories(): Promise<void> {
+    const pendingFile = path.join(this.dbPath, PENDING_FILE);
+
+    if (!fs.existsSync(pendingFile)) {
+      return;
+    }
+
+    try {
+      const data = await fs.promises.readFile(pendingFile, "utf-8");
+      const pendingMemories = JSON.parse(data);
+
+      if (pendingMemories.length === 0) {
+        return;
+      }
+
+      console.error(`[Memory DB] Processing ${pendingMemories.length} pending memories...`);
+
+      // Add pending memories to main storage
+      for (const memory of pendingMemories) {
+        // Check for duplicates
+        const isDuplicate = Array.from(this.memories.values()).some(
+          (m) => this.isSimilar(memory.content, m.content)
+        );
+
+        if (!isDuplicate) {
+          this.memories.set(memory.id, memory);
+        }
+      }
+
+      // Save updated memories
+      await this.saveToFile();
+
+      // Clear pending file
+      await fs.promises.writeFile(pendingFile, "[]", "utf-8");
+
+      console.error(`[Memory DB] Pending memories processed`);
+    } catch (error) {
+      console.error(`[Memory DB] Error processing pending memories:`, error);
+    }
+  }
+
+  /**
+   * Check if two texts are similar (simple similarity check)
+   */
+  private isSimilar(text1: string, text2: string): boolean {
+    const normalize = (t: string) => t.toLowerCase().trim();
+    const a = normalize(text1);
+    const b = normalize(text2);
+
+    if (a === b || a.includes(b) || b.includes(a)) {
+      return true;
+    }
+
+    // Word overlap check
+    const words1 = new Set(a.split(/\s+/));
+    const words2 = new Set(b.split(/\s+/));
+    const intersection = [...words1].filter((w) => words2.has(w));
+    const union = new Set([...words1, ...words2]);
+
+    return union.size > 0 && intersection.length / union.size > 0.8;
   }
 
   private ensureInitialized(): void {
